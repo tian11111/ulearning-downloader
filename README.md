@@ -22,13 +22,7 @@
 
 ## 🚀 快速安装
 
-### 方法一：从 Greasy Fork 安装（推荐）
-
-1. 安装 [Tampermonkey](https://www.tampermonkey.net/) 浏览器扩展（Chrome/Edge/Firefox）
-2. 点击安装脚本：[从 Greasy Fork 安装](https://greasyfork.org/scripts/XXXXX)
-3. 打开优学院课程资源页面即可使用
-
-### 方法二：从 GitHub 安装
+### 从 GitHub 安装
 
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/) 浏览器扩展
 2. 下载 [优学院资源批量下载.user.js](https://github.com/tian11111/ulearning-downloader/raw/main/优学院资源批量下载.user.js)
@@ -87,9 +81,7 @@
 ### 平台支持
 
 - ✅ 优学院 (ulearning.cn) 主站
-- ✅ 优学院各高校定制版本
 - ✅ 东莞理工学院 (lms.dgut.edu.cn)
-- ✅ 其他使用优学院系统的高校
 
 ## 📋 常见问题 (FAQ)
 
