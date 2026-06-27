@@ -22,14 +22,14 @@
 
 ## 🚀 快速安装
 
-### 从 GitHub 安装
+### 方法一：从 GitHub 安装
 
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/) 浏览器扩展
 2. 下载 [优学院资源批量下载.user.js](https://github.com/tian11111/ulearning-downloader/raw/main/优学院资源批量下载.user.js)
 3. 在 Tampermonkey 中新建脚本，粘贴下载的内容
 4. 保存并启用脚本
 
-### 方法三：直接安装
+### 方法二：直接安装
 
 1. 安装 Tampermonkey 扩展
 2. 点击下方按钮直接安装：
