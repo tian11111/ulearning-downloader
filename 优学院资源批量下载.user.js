@@ -1,12 +1,18 @@
 // ==UserScript==
-// @name         优学院资源批量下载
-// @namespace    https://github.com/Neco
+// @name         优学院资源批量下载 | ULEARNING Downloader
+// @namespace    https://github.com/tian11111/ulearning-downloader
 // @version      3.6.0
-// @description  批量下载优学院课程资源
-// @author       Neco
+// @description  优学院/ULEARNING课程资源批量下载工具 - 支持PDF、Word、PPT、Excel、视频、音频等文件一键批量下载 | Batch download ULEARNING course resources
+// @author       tian11111
+// @homepage     https://github.com/tian11111/ulearning-downloader
+// @homepageURL  https://github.com/tian11111/ulearning-downloader
+// @supportURL   https://github.com/tian11111/ulearning-downloader/issues
+// @license      MIT
+// @icon         https://www.ulearning.cn/favicon.ico
 // @match        *://*.ulearning.cn/*
 // @match        *://ua.ulearning.cn/*
 // @match        *://docs.ulearning.cn/*
+// @match        *://*.ulearning.com/*
 // @match        *://lms.dgut.edu.cn/*
 // @match        *://*.dgut.edu.cn/*
 // @match        *://ua.dgut.edu.cn/*
