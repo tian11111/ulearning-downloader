@@ -1,10 +1,5 @@
 # 优学院资源批量下载器 | ULEARNING Resource Downloader
 
-[![GitHub stars](https://img.shields.io/github/stars/tian11111/ulearning-downloader?style=social)](https://github.com/tian11111/ulearning-downloader/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/tian11111/ulearning-downloader?style=social)](https://github.com/tian11111/ulearning-downloader/network/members)
-[![GitHub issues](https://img.shields.io/github/issues/tian11111/ulearning-downloader)](https://github.com/tian11111/ulearning-downloader/issues)
-[![GitHub license](https://img.shields.io/github/license/tian11111/ulearning-downloader)](https://github.com/tian11111/ulearning-downloader/blob/main/LICENSE)
-[![Greasy Fork Version](https://img.shields.io/greasyfork/v/XXXXX)](https://greasyfork.org/scripts/XXXXX)
 
 > 📥 **优学院/ULEARNING课程资源批量下载油猴脚本** - 一键批量下载优学院平台上的PDF、Word、PPT、Excel、视频、音频等学习资料
 
