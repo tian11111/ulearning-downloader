@@ -1,24 +1,19 @@
 // ==UserScript==
-// @name         优学院资源批量下载 | ULEARNING Downloader
-// @namespace    https://github.com/tian11111/ulearning-downloader
-// @version      3.6.0
-// @description  优学院/ULEARNING课程资源批量下载工具 - 支持PDF、Word、PPT、Excel、视频、音频等文件一键批量下载 | Batch download ULEARNING course resources
-// @author       tian11111
-// @homepage     https://github.com/tian11111/ulearning-downloader
-// @homepageURL  https://github.com/tian11111/ulearning-downloader
-// @supportURL   https://github.com/tian11111/ulearning-downloader/issues
-// @license      MIT
-// @icon         https://www.ulearning.cn/favicon.ico
+// @name         优学院资源批量下载
+// @namespace    https://github.com/Neco
+// @version      3.9.0
+// @description  批量下载优学院课程资源
+// @author       Neco
 // @match        *://*.ulearning.cn/*
 // @match        *://ua.ulearning.cn/*
 // @match        *://docs.ulearning.cn/*
-// @match        *://*.ulearning.com/*
 // @match        *://lms.dgut.edu.cn/*
 // @match        *://*.dgut.edu.cn/*
 // @match        *://ua.dgut.edu.cn/*
 // @match        *://uobs.dgut.edu.cn/*
 // @grant        GM_download
 // @grant        GM_addStyle
+// @grant        GM_xmlhttpRequest
 // @connect      *
 // @run-at       document-idle
 // ==/UserScript==
@@ -30,6 +25,7 @@
     let currentFilter = 'all';
     let panelVisible = false;
     let logVisible = false;
+    let downloadDelay = 500;
     const logs = [];
 
     function addLog(msg, type = 'info') {
@@ -202,19 +198,87 @@
         });
     }
 
+    let downloading = false;
+
     function downloadFile(resource) {
-        const a = document.createElement('a');
-        a.href = resource.url;
-        a.download = resource.pureName || resource.name;
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => document.body.removeChild(a), 100);
+        return new Promise((resolve) => {
+            const fileName = resource.pureName || resource.name;
+
+            // 用 GM_xmlhttpRequest 获取文件为 Blob，绕过跨域限制
+            if (typeof GM_xmlhttpRequest !== 'undefined') {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: resource.url,
+                    responseType: 'blob',
+                    onload: function(response) {
+                        try {
+                            const blob = response.response;
+                            const blobUrl = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = blobUrl;
+                            a.download = fileName;
+                            a.style.display = 'none';
+                            document.body.appendChild(a);
+                            a.click();
+                            setTimeout(() => {
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(blobUrl);
+                            }, 1000);
+                            addLog(`✅ 下载成功: ${fileName}`, 'success');
+                        } catch (e) {
+                            addLog(`❌ 下载失败: ${fileName} - ${e.message}`, 'error');
+                        }
+                        resolve();
+                    },
+                    onerror: function(err) {
+                        addLog(`❌ 下载失败: ${fileName}`, 'error');
+                        // 降级：尝试直接打开
+                        try {
+                            window.open(resource.url + '&attname=' + encodeURIComponent(fileName), '_blank');
+                        } catch (e) {}
+                        resolve();
+                    },
+                    ontimeout: function() {
+                        addLog(`❌ 下载超时: ${fileName}`, 'error');
+                        resolve();
+                    }
+                });
+            } else {
+                // 降级方案：直接用 a 标签
+                const a = document.createElement('a');
+                a.href = resource.url;
+                a.download = fileName;
+                a.target = '_blank';
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => document.body.removeChild(a), 1000);
+                resolve();
+            }
+        });
     }
 
-    function downloadMultiple(resources) {
-        resources.forEach((r, i) => setTimeout(() => downloadFile(r), i * 800));
+    async function downloadMultiple(resources) {
+        if (downloading) {
+            showToast('正在下载中，请等待...');
+            return;
+        }
+        downloading = true;
         showToast(`开始下载 ${resources.length} 个文件`);
+
+        for (let i = 0; i < resources.length; i++) {
+            const r = resources[i];
+            addLog(`⬇️ [${i + 1}/${resources.length}] ${r.pureName || r.name}`, 'info');
+            await downloadFile(r);
+            // 每个文件间隔 1.5 秒，避免浏览器拦截
+            if (i < resources.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, downloadDelay));
+            }
+        }
+
+        downloading = false;
+        showToast(`下载完成 ${resources.length} 个文件`);
+        addLog(`✅ 全部下载完成`, 'success');
     }
 
     function createPanel() {
@@ -271,7 +335,18 @@
                     <button id="ulearn-dl-all" class="ulearn-btn primary" disabled>下载全部</button>
                     <button id="ulearn-dl-sel" class="ulearn-btn primary" disabled>下载选中</button>
                     <button id="ulearn-copy" class="ulearn-btn secondary">复制链接</button>
-                    <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; color: #a6adc8;">
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #a6adc8;">
+                    <span>下载间隔：</span>
+                    <select id="ulearn-delay" style="background:#313244;color:#cdd6f4;border:1px solid #45475a;border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;">
+                        <option value="0">无间隔</option>
+                        <option value="500" selected>0.5秒</option>
+                        <option value="1000">1秒</option>
+                        <option value="1500">1.5秒</option>
+                        <option value="2000">2秒</option>
+                        <option value="3000">3秒</option>
+                    </select>
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
                         <input type="checkbox" id="ulearn-sel-all" checked> 全选
                     </label>
                 </div>
@@ -365,13 +440,44 @@
         setupDOMObserver();
         const { floatBtn, panel } = createPanel();
 
-        floatBtn.addEventListener('click', e => {
-            e.stopPropagation();
-            panelVisible = !panelVisible;
-            panel.style.display = panelVisible ? 'flex' : 'none';
-            if (panelVisible) {
-                updateUI();
-                scanPageLinks();
+        // 按钮拖拽 + 点击切换
+        let btnDrag = false, btnMoved = false, btnSx, btnSy, btnOrigLeft, btnOrigTop;
+        floatBtn.addEventListener('mousedown', e => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            btnDrag = true;
+            btnMoved = false;
+            btnSx = e.clientX;
+            btnSy = e.clientY;
+            const rect = floatBtn.getBoundingClientRect();
+            btnOrigLeft = rect.left;
+            btnOrigTop = rect.top;
+            // 切换到 left/top 定位
+            floatBtn.style.right = 'auto';
+            floatBtn.style.left = btnOrigLeft + 'px';
+            floatBtn.style.top = btnOrigTop + 'px';
+        });
+        document.addEventListener('mousemove', e => {
+            if (!btnDrag) return;
+            const dx = e.clientX - btnSx;
+            const dy = e.clientY - btnSy;
+            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) btnMoved = true;
+            if (btnMoved) {
+                floatBtn.style.left = (btnOrigLeft + dx) + 'px';
+                floatBtn.style.top = (btnOrigTop + dy) + 'px';
+            }
+        });
+        document.addEventListener('mouseup', e => {
+            if (!btnDrag) return;
+            btnDrag = false;
+            if (!btnMoved) {
+                // 点击行为
+                panelVisible = !panelVisible;
+                panel.style.display = panelVisible ? 'flex' : 'none';
+                if (panelVisible) {
+                    updateUI();
+                    scanPageLinks();
+                }
             }
         });
 
@@ -402,6 +508,10 @@
         document.getElementById('ulearn-sel-all').addEventListener('change', e => {
             document.querySelectorAll('.ulearn-cb').forEach(cb => cb.checked = e.target.checked);
             updateSelBtn();
+        });
+
+        document.getElementById('ulearn-delay').addEventListener('change', e => {
+            downloadDelay = parseInt(e.target.value);
         });
 
         document.getElementById('ulearn-dl-all').addEventListener('click', () => {
