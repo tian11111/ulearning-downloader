@@ -1,15 +1,13 @@
 // ==UserScript==
 // @name         优学院资源批量下载
 // @namespace    https://github.com/Neco
-// @version      3.9.0
+// @version      3.9.1
 // @description  批量下载优学院课程资源
 // @author       Neco
 // @match        *://*.ulearning.cn/*
 // @match        *://ua.ulearning.cn/*
 // @match        *://docs.ulearning.cn/*
-// @match        *://lms.dgut.edu.cn/*
-// @match        *://*.dgut.edu.cn/*
-// @match        *://ua.dgut.edu.cn/*
+// @match        *://lms.dgut.edu.cn/ulearning/*
 // @match        *://uobs.dgut.edu.cn/*
 // @grant        GM_download
 // @grant        GM_addStyle
@@ -436,6 +434,13 @@
     }
 
     function init() {
+        // 二次检查：只允许优学院 / ulearning 页面
+        const loc = window.location.href;
+        if (!loc.includes('ulearning') && !loc.includes('uobs.dgut.edu.cn')) {
+            console.log('[优学院下载器] 非优学院页面，跳过');
+            return;
+        }
+
         setupInterceptor();
         setupDOMObserver();
         const { floatBtn, panel } = createPanel();
