@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         优学院资源批量下载
 // @namespace    https://github.com/Neco
-// @version      4.3.0
+// @version      4.3.1
 // @description  批量下载优学院课程资源（修复单元页文件地址捕获、资源页自动翻页、噪声与卡死）
 // @author       Neco
 // @match        *://*.ulearning.cn/*
@@ -769,7 +769,7 @@
         panel.innerHTML = `
             <div id="ulearn-header" style="padding:12px 16px;background:linear-gradient(135deg,#667eea,#764ba2);
                 display:flex;justify-content:space-between;align-items:center;cursor:move;">
-                <span style="font-weight:600;">📥 优学院下载器 v4.3.0</span>
+                <span style="font-weight:600;">📥 优学院下载器 v4.3.1</span>
                 <div style="display:flex;gap:6px;">
                     <button id="ulearn-log-btn" title="日志" style="background:rgba(255,255,255,.2);border:none;
                         color:#fff;padding:4px 10px;border-radius:12px;cursor:pointer;font-size:12px;">📋</button>
@@ -1497,19 +1497,32 @@
         return n;
     }
 
+    /* ------------------- 展开单元（防震荡版） ------------------- */
+
+    /** 本次补全中已确认展开的单元标题（跨轮次保留，绝不重复点击） */
+    const EXPANDED_TITLES = Object.create(null);
+    /** 点击后状态不明/无法展开的单元标题，直接放弃，避免反复点造成展开-收缩 */
+    const SKIP_TITLES = Object.create(null);
+
+    function resetExpandState() {
+        for (const k in EXPANDED_TITLES) delete EXPANDED_TITLES[k];
+        for (const k in SKIP_TITLES) delete SKIP_TITLES[k];
+    }
+
+    function safeClick(el) {
+        if (!el || !el.isConnected) return false;
+        try { el.click(); return true; } catch (e) { return false; }
+    }
+
     /**
      * 该标题块所属单元是否已展开。
-     * 注意：不能一路向上遍历到整页容器——页面里其他已展开单元也有「查看」按钮，
-     * 会把所有折叠章节误判为已展开，导致一个都点不开。
-     * 因此只在「仅包含一个单元」的作用域内判断。
+     * 不能向上遍历到整页容器——页面里其他已展开单元也有「查看」按钮，
+     * 会把所有折叠章节误判为已展开。因此只在「仅含一个单元」的作用域内判断。
      */
     function isUnitExpanded(el) {
         if (!el) return false;
-
-        // 1) 自身子树里有「查看」→ 已展开
         if (hasViewButton(el)) return true;
 
-        // 2) 向上找第一个「只含一个单元」的容器
         let p = el.parentElement;
         for (let i = 0; i < 3 && p; i++) {
             const hits = (String(p.textContent || '').match(/个活动/g) || []).length;
@@ -1534,7 +1547,8 @@
             if (!t || t.length > 80) continue;
             if (!/个活动/.test(t)) continue;
             if (/^\d+个活动$/.test(t)) continue;
-            if (isUnitExpanded(el)) continue;
+            if (EXPANDED_TITLES[t] || SKIP_TITLES[t]) continue;
+            if (isUnitExpanded(el)) { EXPANDED_TITLES[t] = 1; continue; }
             cands.push({ el: el, title: t });
         }
         // 只留最深一层
@@ -1542,65 +1556,102 @@
     }
 
     /**
-     * 逐个点开仍折叠的单元。
-     * 关键：点击后页面可能整体重渲染，元素引用会失效，
-     * 因此用「全局查看按钮数是否增加」来判断是否成功，而不依赖元素本身。
+     * 构造点击目标，顺序为「由深到浅」：
+     * 先点最内层标题文本（事件会冒泡到绑定点击处理的容器，两种绑定方式都有效），
+     * 再退回整个标题块。这样绝大多数情况一次点击就能命中。
      */
+    function buildClickTargets(el) {
+        const out = [];
+        let deep = el;
+        for (let i = 0; i < 4; i++) {
+            const child = deep && deep.firstElementChild;
+            if (!child) break;
+            const txt = visibleText(child);
+            if (!txt) break;
+            deep = child;
+        }
+        if (deep && deep !== el) out.push(deep);
+        out.push(el);
+        return out;
+    }
+
     /**
-     * 逐个点开仍折叠的单元。
-     * 站点点击后会整体重渲染，元素引用会失效，因此：
-     *  1) 每轮都重新扫描最新 DOM；
-     *  2) 用「每个标题只尝试一次」避免把刚展开的又点回去（来回震荡）；
-     *  3) 用全局「查看」按钮数是否增加来判定是否真的展开成功。
+     * 展开单个单元。
+     * 规则：每点一次都要看「查看」按钮数量的增减——
+     *   增加 = 展开成功；
+     *   减少 = 点错目标，把本来展开的收起来了 → 立刻再点一次复原，然后永不再碰；
+     *   不变 = 该目标无效，换下一个目标（每个单元最多点 2 次）。
+     * 全程用全局计数判断，不依赖元素引用，也不做「盲点三次」。
      */
-    async function clickCollapsedUnits() {
-        let opened = 0;
-        const tried = {};
+    async function expandOneUnit(cand) {
+        const title = cand.title;
+        if (EXPANDED_TITLES[title]) return true;
+        if (SKIP_TITLES[title]) return false;
 
-        for (let guard = 0; guard < 80; guard++) {
-            const cands = collapsedCandidates();
-            const next = cands.filter(c => !tried[c.title])[0];
-            if (!next) break;
+        const targets = buildClickTargets(cand.el);
+        let clicks = 0;
 
-            tried[next.title] = 1;
+        for (let i = 0; i < targets.length && clicks < 2; i++) {
+            const t = targets[i];
+            if (!t || !t.isConnected) continue;
+
             const before = globalViewCount();
-            let ok = false;
+            if (!safeClick(t)) continue;
+            clicks++;
 
-            // 依次尝试 3 种点击目标（每次都基于当前最新元素）
-            const targets = [];
-            const el = next.el;
-            targets.push(el);
-            try { if (el.firstElementChild) targets.push(el.firstElementChild); } catch (e) { }
-            try {
-                const par = el.parentElement;
-                if (par && par.firstElementChild && par.firstElementChild !== el) {
-                    targets.push(par.firstElementChild);
-                }
-            } catch (e) { }
+            await sleep(650);
+            let after = globalViewCount();
+            if (after === before) { await sleep(550); after = globalViewCount(); }
 
-            for (let t = 0; t < targets.length; t++) {
-                try { targets[t].click(); } catch (e) { continue; }
-                await sleep(650);
-                if (globalViewCount() > before) { ok = true; break; }
+            if (after > before) {
+                EXPANDED_TITLES[title] = 1;
+                return true;
             }
 
-            if (ok) opened++;
+            if (after < before) {
+                // 误收起：立刻复原，之后绝不再点这个单元
+                safeClick(t);
+                await sleep(700);
+                if (globalViewCount() >= before) EXPANDED_TITLES[title] = 1;
+                else SKIP_TITLES[title] = 1;
+                return !!EXPANDED_TITLES[title];
+            }
+            // 数量不变：换下一个点击目标
+        }
+
+        SKIP_TITLES[title] = 1;
+        return false;
+    }
+
+    /** 点开仍折叠的单元，返回本次新展开的数量（每个单元最多交互一轮） */
+    async function clickCollapsedUnits() {
+        let opened = 0;
+        for (let guard = 0; guard < 40; guard++) {
+            const cands = collapsedCandidates();
+            const next = cands.filter(c => !EXPANDED_TITLES[c.title] && !SKIP_TITLES[c.title])[0];
+            if (!next) break;
+            if (await expandOneUnit(next)) opened++;
         }
         return opened;
     }
 
-    /** 展开全部单元：先尝试开关，再逐个点开折叠章节 */
+    /** 展开全部单元：仅在「一个都没展开」时才尝试开关，避免把已展开的全收起 */
     async function expandAllUnitsDeep() {
-        if (clickExpandAllSwitch()) await sleep(1300);
+        if (globalViewCount() === 0) {
+            if (clickExpandAllSwitch()) {
+                await sleep(1200);
+                // 开关可能不生效，不作为唯一手段
+            }
+        }
 
-        let lastCount = -1;
-        for (let round = 0; round < 15; round++) {
-            const n = globalViewCount();
+        let lastViews = -1;
+        for (let round = 0; round < 8; round++) {
             const opened = await clickCollapsedUnits();
-            if (!opened && n === lastCount) break;
-            lastCount = globalViewCount();
+            const views = globalViewCount();
             if (!opened) break;
-            await sleep(600);
+            if (views === lastViews && round > 0) break;
+            lastViews = views;
+            await sleep(350);
         }
         return globalViewCount();
     }
@@ -1609,6 +1660,7 @@
         if (STATE.filling) return showToast('正在补全中…');
         STATE.filling = true;
 
+        resetExpandState();
         let got = 0, tried = 0;
         const processed = {};
 
